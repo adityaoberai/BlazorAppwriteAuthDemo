@@ -1,7 +1,22 @@
 ﻿@page "/"
+@using AppwriteDemo.Services
+@inject AppwriteService AppwriteService
+@inject NavigationManager Navigation
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
-
-Welcome to your new app.
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await AppwriteService.GetLoggedInUserAsync();
+        
+        if (user == null)
+        {
+            Navigation.NavigateTo("/signup");
+        }
+        else
+        {
+            Navigation.NavigateTo("/todos");
+        }
+    }
+}

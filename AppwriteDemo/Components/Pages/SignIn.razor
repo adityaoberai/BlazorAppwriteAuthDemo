@@ -1,0 +1,111 @@
+@page "/signin"
+@using AppwriteDemo.Models
+@using AppwriteDemo.Services
+@using Microsoft.AspNetCore.Components
+@inject AppwriteService AppwriteService
+@inject NavigationManager Navigation
+@inject ILogger<SignIn> Logger
+
+<PageTitle>Sign In</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="text-center">Sign In</h3>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @errorMessage
+                        </div>
+                    }
+
+                    <EditForm Model="signInModel" OnValidSubmit="HandleSignIn" FormName="SignInForm">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <InputText @bind-Value="signInModel.Email" class="form-control" id="email" placeholder="Enter your email" />
+                            <ValidationMessage For="() => signInModel.Email" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <InputText @bind-Value="signInModel.Password" type="password" class="form-control" id="password" placeholder="Enter your password" />
+                            <ValidationMessage For="() => signInModel.Password" class="text-danger" />
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary" disabled="@isLoading">
+                                @if (isLoading)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                }
+                                Sign In
+                            </button>
+                        </div>
+                    </EditForm>
+
+                    <div class="text-center mt-3">
+                        <p>Don't have an account? <a href="/signup">Sign Up</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private SignInModel signInModel { get; set; } = new();
+
+    private string errorMessage = string.Empty;
+    private bool isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is already logged in
+        var user = await AppwriteService.GetLoggedInUserAsync();
+        if (user != null)
+        {
+            Navigation.NavigateTo("/todos");
+        }
+    }
+
+    private async Task HandleSignIn()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            Logger.LogInformation("SignIn: Attempting to authenticate user {Email}", signInModel.Email);
+            
+            var session = await AppwriteService.SignInWithEmailAsync(
+                signInModel.Email,
+                signInModel.Password
+            );
+
+            Logger.LogInformation("SignIn: Successfully authenticated user {Email}", signInModel.Email);
+
+            // Set the session cookie
+            AppwriteService.SetSessionCookie(session.Secret);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "SignIn: Failed to authenticate user {Email}: {ErrorMessage}", signInModel.Email, ex.Message);
+            errorMessage = "Invalid email or password. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+
+            // Redirect to account page
+            Navigation.NavigateTo("/todos");
+        }
+    }
+}

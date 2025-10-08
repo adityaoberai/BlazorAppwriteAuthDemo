@@ -1,0 +1,296 @@
+@page "/todos"
+@rendermode InteractiveServer
+@using AppwriteDemo.Services
+@using AppwriteDemo.Models
+@using Appwrite.Models
+@inject AppwriteService AppwriteService
+@inject NavigationManager Navigation
+@inject ILogger<Todos> Logger
+
+<PageTitle>My Todos</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">My Todos</h3>
+                    @if (user != null)
+                    {
+                        <small class="text-muted">@user.Email</small>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading your todos...</p>
+                        </div>
+                    }
+                    else if (user == null)
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            You need to be signed in to view todos.
+                        </div>
+                        <a href="/signin" class="btn btn-primary">Sign In</a>
+                    }
+                    else
+                    {
+                        <!-- Add new todo form -->
+                        <div class="mb-4">
+                            <div class="input-group">
+                                <input type="text" 
+                                       class="form-control" 
+                                       placeholder="What needs to be done?" 
+                                       @bind="newTodoTitle"
+                                       @bind:event="oninput"
+                                       @onkeypress="HandleKeyPress"
+                                       disabled="@isAddingTodo" />
+                                <button class="btn btn-primary" 
+                                        @onclick="AddTodo" 
+                                        disabled="@(isAddingTodo || string.IsNullOrWhiteSpace(newTodoTitle))">
+                                    @if (isAddingTodo)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                @errorMessage
+                                <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(successMessage))
+                        {
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                @successMessage
+                                <button type="button" class="btn-close" @onclick="() => successMessage = string.Empty"></button>
+                            </div>
+                        }
+
+                        <!-- Todos list -->
+                        @if (todos.Count == 0)
+                        {
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-clipboard-check" style="font-size: 3rem;"></i>
+                                <p class="mt-3">No todos yet. Add one to get started!</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="list-group">
+                                @foreach (var todo in todos)
+                                {
+                                    <div class="list-group-item d-flex align-items-center @(todo.IsCompleted ? "bg-light" : "")">
+                                        <input type="checkbox" 
+                                               class="form-check-input me-3" 
+                                               checked="@todo.IsCompleted"
+                                               @onchange="() => ToggleTodo(todo)"
+                                               disabled="@updatingTodoIds.Contains(todo.Id)" />
+                                        
+                                        <span class="flex-grow-1 @(todo.IsCompleted ? "text-decoration-line-through text-muted" : "")">
+                                            @todo.Title
+                                        </span>
+
+                                        <small class="text-muted me-3">
+                                            @todo.CreatedAt.ToString("MMM dd, yyyy")
+                                        </small>
+
+                                        <button class="btn btn-sm btn-link text-danger p-0" 
+                                                @onclick="() => DeleteTodo(todo.Id)"
+                                                disabled="@deletingTodoIds.Contains(todo.Id)"
+                                                title="Delete todo">
+                                            @if (deletingTodoIds.Contains(todo.Id))
+                                            {
+                                                <span class="spinner-border spinner-border-sm"></span>
+                                            }
+                                            else
+                                            {
+                                                <span>Delete</span>
+                                            }
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="mt-3 d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    @todos.Count(t => !t.IsCompleted) active, @todos.Count(t => t.IsCompleted) completed
+                                </small>
+                                @if (todos.Any(t => t.IsCompleted))
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearCompleted">
+                                        Clear Completed
+                                    </button>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private User? user;
+    private List<TodoItem> todos = new();
+    private string newTodoTitle = string.Empty;
+    private bool isLoading = true;
+    private bool isAddingTodo = false;
+    private HashSet<string> updatingTodoIds = new();
+    private HashSet<string> deletingTodoIds = new();
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Logger.LogInformation("Todos page: Loading user and todos");
+            user = await AppwriteService.GetLoggedInUserAsync();
+
+            if (user == null)
+            {
+                Logger.LogWarning("Todos page: No authenticated user, redirecting to signin");
+                Navigation.NavigateTo("/signin");
+                return;
+            }
+
+            await LoadTodos();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Todos page: Error during initialization");
+            errorMessage = "Failed to load todos. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadTodos()
+    {
+        try
+        {
+            todos = await AppwriteService.GetTodosAsync();
+            Logger.LogInformation("Todos page: Loaded {TodoCount} todos", todos.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Todos page: Error loading todos");
+            errorMessage = "Failed to load todos. Please refresh the page.";
+        }
+    }
+
+    private async Task AddTodo()
+    {
+        if (string.IsNullOrWhiteSpace(newTodoTitle))
+            return;
+
+        try
+        {
+            isAddingTodo = true;
+            errorMessage = string.Empty;
+
+            var todo = await AppwriteService.CreateTodoAsync(newTodoTitle.Trim());
+            todos.Insert(0, todo);
+            newTodoTitle = string.Empty;
+            
+            Logger.LogInformation("Todos page: Created new todo: {TodoTitle}", todo.Title);
+            successMessage = "Todo added successfully!";
+            
+            // Clear success message after 3 seconds
+            await Task.Delay(3000);
+            successMessage = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Todos page: Error creating todo");
+            errorMessage = "Failed to add todo. Please try again.";
+        }
+        finally
+        {
+            isAddingTodo = false;
+        }
+    }
+
+    private async Task ToggleTodo(TodoItem todo)
+    {
+        try
+        {
+            updatingTodoIds.Add(todo.Id);
+            errorMessage = string.Empty;
+
+            var updatedTodo = await AppwriteService.UpdateTodoAsync(todo.Id, todo.Title, !todo.IsCompleted);
+            
+            var index = todos.FindIndex(t => t.Id == todo.Id);
+            if (index >= 0)
+            {
+                todos[index] = updatedTodo;
+            }
+
+            Logger.LogInformation("Todos page: Toggled todo {TodoId} to {IsCompleted}", todo.Id, updatedTodo.IsCompleted);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Todos page: Error updating todo");
+            errorMessage = "Failed to update todo. Please try again.";
+        }
+        finally
+        {
+            updatingTodoIds.Remove(todo.Id);
+        }
+    }
+
+    private async Task DeleteTodo(string todoId)
+    {
+        try
+        {
+            deletingTodoIds.Add(todoId);
+            errorMessage = string.Empty;
+
+            await AppwriteService.DeleteTodoAsync(todoId);
+            todos.RemoveAll(t => t.Id == todoId);
+
+            Logger.LogInformation("Todos page: Deleted todo {TodoId}", todoId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Todos page: Error deleting todo");
+            errorMessage = "Failed to delete todo. Please try again.";
+        }
+        finally
+        {
+            deletingTodoIds.Remove(todoId);
+        }
+    }
+
+    private async Task ClearCompleted()
+    {
+        var completedTodos = todos.Where(t => t.IsCompleted).ToList();
+        
+        foreach (var todo in completedTodos)
+        {
+            await DeleteTodo(todo.Id);
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(newTodoTitle))
+        {
+            await AddTodo();
+        }
+    }
+}

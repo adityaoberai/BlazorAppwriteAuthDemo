@@ -1,10 +1,17 @@
 using AppwriteDemo.Components;
+using AppwriteDemo.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// Add HTTP context accessor for accessing cookies
+builder.Services.AddHttpContextAccessor();
+
+// Register Appwrite services
+builder.Services.AddScoped<AppwriteService>();
 
 var app = builder.Build();
 

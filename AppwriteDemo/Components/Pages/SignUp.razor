@@ -1,0 +1,118 @@
+@page "/signup"
+@using AppwriteDemo.Models
+@using AppwriteDemo.Services
+@using Microsoft.AspNetCore.Components
+@inject AppwriteService AppwriteService
+@inject NavigationManager Navigation
+@inject ILogger<SignUp> Logger
+
+<PageTitle>Sign Up</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="text-center">Sign Up</h3>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @errorMessage
+                        </div>
+                    }
+
+                    <EditForm Model="signUpModel" OnValidSubmit="HandleSignUp" FormName="SignUpForm">
+                        <DataAnnotationsValidator />
+                        <ValidationSummary class="text-danger" />
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <InputText @bind-Value="signUpModel.Email" class="form-control" id="email" placeholder="Enter your email" />
+                            <ValidationMessage For="() => signUpModel.Email" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <InputText @bind-Value="signUpModel.Password" type="password" class="form-control" id="password" placeholder="Enter your password" />
+                            <ValidationMessage For="() => signUpModel.Password" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Name</label>
+                            <InputText @bind-Value="signUpModel.Name" class="form-control" id="name" placeholder="Enter your name" />
+                            <ValidationMessage For="() => signUpModel.Name" class="text-danger" />
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary" disabled="@isLoading">
+                                @if (isLoading)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                }
+                                Sign Up
+                            </button>
+                        </div>
+                    </EditForm>
+
+                    <div class="text-center mt-3">
+                        <p>Already have an account? <a href="/signin">Sign In</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private SignUpModel signUpModel { get; set; } = new();
+
+    private string errorMessage = string.Empty;
+    private bool isLoading = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is already logged in
+        var user = await AppwriteService.GetLoggedInUserAsync();
+        if (user != null)
+        {
+            Navigation.NavigateTo("/todos");
+        }
+    }
+
+    private async Task HandleSignUp()
+    {
+        isLoading = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            Logger.LogInformation("SignUp: Attempting to create account for {Email}", signUpModel.Email);
+            
+            var session = await AppwriteService.SignUpWithEmailAsync(
+                signUpModel.Email,
+                signUpModel.Password,
+                signUpModel.Name
+            );
+
+            Logger.LogInformation("SignUp: Successfully created account for {Email}", signUpModel.Email);
+
+            // Set the session cookie
+            AppwriteService.SetSessionCookie(session.Secret);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "SignUp: Failed to create account for {Email}: {ErrorMessage}", signUpModel.Email, ex.Message);
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+            
+            // Redirect to account page
+            Navigation.NavigateTo("/todos");
+        }
+    }
+}

@@ -1,0 +1,130 @@
+@page "/account"
+@rendermode InteractiveServer
+@using AppwriteDemo.Services
+@using Appwrite.Models
+@inject AppwriteService AppwriteService
+@inject NavigationManager Navigation
+@inject ILogger<Account> Logger
+
+<PageTitle>Account</PageTitle>
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="text-center">Account Information</h3>
+                </div>
+                <div class="card-body">
+                    @if (user != null)
+                    {
+                        <div class="row">
+                            <div class="col-md-6">
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item">
+                                        <strong>Email:</strong> @user.Email
+                                    </li>
+                                    <li class="list-group-item">
+                                        <strong>Name:</strong> @user.Name
+                                    </li>
+                                    <li class="list-group-item">
+                                        <strong>User ID:</strong> @user.Id
+                                    </li>
+                                    <li class="list-group-item">
+                                        <strong>Registration Date:</strong> @user.Registration
+                                    </li>
+                                    <li class="list-group-item">
+                                        <strong>Email Verified:</strong> @(user.EmailVerification ? "Yes" : "No")
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <button class="btn btn-danger" @onclick="HandleSignOut" disabled="@isSigningOut">
+                                @if (isSigningOut)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    <span>Signing out...</span>
+                                }
+                                else
+                                {
+                                    <span>Sign Out</span>
+                                }
+                            </button>
+                        </div>
+                    }
+                    else if (isLoading)
+                    {
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading account information...</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning" role="alert">
+                            Unable to load account information. Please try signing in again.
+                        </div>
+                        <a href="/signin" class="btn btn-primary">Sign In</a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private User? user;
+    private bool isLoading = true;
+    private bool isSigningOut = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Logger.LogDebug("Account page: Loading user information");
+            user = await AppwriteService.GetLoggedInUserAsync();
+            
+            if (user == null)
+            {
+                Logger.LogInformation("Account page: No authenticated user found, redirecting to signup");
+                Navigation.NavigateTo("/signin");
+            }
+            else
+            {
+                Logger.LogDebug("Account page: Successfully loaded user {UserEmail}", user.Email);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Account page: Error loading user information");
+            Navigation.NavigateTo("/signin");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleSignOut()
+    {
+        try
+        {
+            isSigningOut = true;
+            Logger.LogInformation("Account page: User {UserEmail} is signing out", user?.Email);
+            
+            await AppwriteService.SignOutAsync();
+            
+            Logger.LogInformation("Account page: Sign out successful, redirecting to signin");
+            Navigation.NavigateTo("/signin", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Account page: Error during sign out");
+            isSigningOut = false;
+        }
+    }
+}
