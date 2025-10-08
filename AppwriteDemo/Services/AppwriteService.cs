@@ -151,7 +151,7 @@ public class AppwriteService
             Path = "/",
             HttpOnly = true,
             SameSite = SameSiteMode.Strict,
-            Secure = false // Set to false for development HTTP
+            Secure = true
         };
 
         httpContext.Response.Cookies.Append("appwrite-auth-session", sessionSecret, cookieOptions);
