@@ -106,27 +106,67 @@
                                                @onchange="() => ToggleTodo(todo)"
                                                disabled="@updatingTodoIds.Contains(todo.Id)" />
                                         
-                                        <span class="flex-grow-1 @(todo.IsCompleted ? "text-decoration-line-through text-muted" : "")">
-                                            @todo.Title
-                                        </span>
+                                        @if (editingTodoId == todo.Id)
+                                        {
+                                            <input type="text" 
+                                                   class="form-control form-control-sm me-2 flex-grow-1" 
+                                                   @bind="editingTodoTitle"
+                                                   @bind:event="oninput"
+                                                   @onkeypress="(e) => HandleEditKeyPress(e, todo.Id)"
+                                                   disabled="@updatingTodoIds.Contains(todo.Id)" />
+                                            
+                                            <button class="btn btn-sm btn-success me-2" 
+                                                    @onclick="() => SaveTodoEdit(todo.Id)"
+                                                    disabled="@(updatingTodoIds.Contains(todo.Id) || string.IsNullOrWhiteSpace(editingTodoTitle))"
+                                                    title="Save">
+                                                @if (updatingTodoIds.Contains(todo.Id))
+                                                {
+                                                    <span class="spinner-border spinner-border-sm"></span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Save</span>
+                                                }
+                                            </button>
+                                            
+                                            <button class="btn btn-sm btn-secondary me-2" 
+                                                    @onclick="CancelEdit"
+                                                    disabled="@updatingTodoIds.Contains(todo.Id)"
+                                                    title="Cancel">
+                                                Cancel
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <span class="flex-grow-1 @(todo.IsCompleted ? "text-decoration-line-through text-muted" : "")">
+                                                @todo.Title
+                                            </span>
 
-                                        <small class="text-muted me-3">
-                                            @todo.CreatedAt.ToString("MMM dd, yyyy")
-                                        </small>
+                                            <small class="text-muted me-3 d-none d-md-inline">
+                                                @todo.CreatedAt.ToString("MMM dd, yyyy")
+                                            </small>
 
-                                        <button class="btn btn-sm btn-outline-danger" 
-                                                @onclick="() => DeleteTodo(todo.Id)"
-                                                disabled="@deletingTodoIds.Contains(todo.Id)"
-                                                title="Delete todo">
-                                            @if (deletingTodoIds.Contains(todo.Id))
-                                            {
-                                                <span class="spinner-border spinner-border-sm"></span>
-                                            }
-                                            else
-                                            {
-                                                <span>Delete</span>
-                                            }
-                                        </button>
+                                            <button class="btn btn-sm btn-outline-primary me-2" 
+                                                    @onclick="() => StartEdit(todo)"
+                                                    disabled="@updatingTodoIds.Contains(todo.Id)"
+                                                    title="Edit todo">
+                                                Edit
+                                            </button>
+
+                                            <button class="btn btn-sm btn-outline-danger" 
+                                                    @onclick="() => DeleteTodo(todo.Id)"
+                                                    disabled="@deletingTodoIds.Contains(todo.Id)"
+                                                    title="Delete todo">
+                                                @if (deletingTodoIds.Contains(todo.Id))
+                                                {
+                                                    <span class="spinner-border spinner-border-sm"></span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Delete</span>
+                                                }
+                                            </button>
+                                        }
                                     </div>
                                 }
                             </div>
@@ -161,6 +201,8 @@
     private HashSet<string> deletingTodoIds = new();
     private string errorMessage = string.Empty;
     private string successMessage = string.Empty;
+    private string? editingTodoId = null;
+    private string editingTodoTitle = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -358,6 +400,92 @@
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(newTodoTitle))
         {
             await AddTodo();
+        }
+    }
+
+    private void StartEdit(TodoItem todo)
+    {
+        editingTodoId = todo.Id;
+        editingTodoTitle = todo.Title;
+    }
+
+    private void CancelEdit()
+    {
+        editingTodoId = null;
+        editingTodoTitle = string.Empty;
+    }
+
+    private async Task SaveTodoEdit(string todoId)
+    {
+        if (string.IsNullOrWhiteSpace(editingTodoTitle))
+            return;
+
+        try
+        {
+            updatingTodoIds.Add(todoId);
+            errorMessage = string.Empty;
+
+            var todoToUpdate = todos.FirstOrDefault(t => t.Id == todoId);
+            if (todoToUpdate == null)
+                return;
+
+            var updatedTodo = await AppwriteService.UpdateTodoAsync(todoId, editingTodoTitle.Trim(), todoToUpdate.IsCompleted);
+            
+            var index = todos.FindIndex(t => t.Id == todoId);
+            if (index >= 0)
+            {
+                todos[index] = updatedTodo;
+            }
+
+            Logger.LogInformation("Todos page: Updated todo {TodoId} with new title: {TodoTitle}", todoId, updatedTodo.Title);
+            
+            // Clear editing state
+            editingTodoId = null;
+            editingTodoTitle = string.Empty;
+            
+            successMessage = "Todo updated successfully!";
+            
+            // Clear success message after 3 seconds
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                await InvokeAsync(() =>
+                {
+                    successMessage = string.Empty;
+                    StateHasChanged();
+                });
+            });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configuration"))
+        {
+            Logger.LogError(ex, "Todos page: Configuration error while updating todo");
+            errorMessage = "Application configuration error. Please contact support.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.LogWarning("Todos page: Unauthorized while updating todo, redirecting to signin");
+            Navigation.NavigateTo("/signin");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Todos page: Error updating todo");
+            errorMessage = "Failed to update todo. Please try again.";
+        }
+        finally
+        {
+            updatingTodoIds.Remove(todoId);
+        }
+    }
+
+    private async Task HandleEditKeyPress(KeyboardEventArgs e, string todoId)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(editingTodoTitle))
+        {
+            await SaveTodoEdit(todoId);
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEdit();
         }
     }
 }

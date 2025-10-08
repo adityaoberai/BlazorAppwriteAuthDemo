@@ -206,7 +206,6 @@ public class AppwriteService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Error deleting Appwrite session: {ErrorMessage}", ex.Message);
-            // Continue with cookie clearing even if Appwrite session deletion fails
         }
     }
 
@@ -236,22 +235,6 @@ public class AppwriteService
 
         httpContext.Response.Cookies.Append("appwrite-auth-session", sessionSecret, cookieOptions);
         _logger.LogDebug("Session cookie set successfully");
-    }
-
-    /// <summary>
-    /// Clears the session cookie
-    /// </summary>
-    public void ClearSessionCookie()
-    {
-        var httpContext = _httpContextAccessor.HttpContext;
-        if (httpContext == null)
-        {
-            _logger.LogError("HttpContext is not available when clearing session cookie");
-            return;
-        }
-
-        httpContext.Response.Cookies.Delete("appwrite-auth-session");
-        _logger.LogDebug("Session cookie cleared successfully");
     }
 
     // ============================================

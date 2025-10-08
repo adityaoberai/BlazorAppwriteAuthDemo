@@ -137,7 +137,6 @@
             Logger.LogInformation("Account page: User {UserEmail} is signing out", user?.Email);
             
             await AppwriteService.SignOutAsync();
-            AppwriteService.ClearSessionCookie();
             
             Logger.LogInformation("Account page: Sign out successful, redirecting to signin");
             Navigation.NavigateTo("/signin", forceLoad: true);
