@@ -1,7 +1,7 @@
 {
     "projectId": "68dc3cf0003cbde2a38b",
     "endpoint": "https://fra.cloud.appwrite.io/v1",
-    "projectName": "Test project",
+    "projectName": "ICG Demo",
     "settings": {
         "services": {
             "account": true,
