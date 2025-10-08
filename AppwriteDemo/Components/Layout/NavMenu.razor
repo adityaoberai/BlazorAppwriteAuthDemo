@@ -52,23 +52,19 @@
         }
     </nav>
 
-    <!-- Sign Out Button at Bottom -->
-    @if (isLoggedIn)
-    {
-        <div class="position-absolute bottom-0 w-100 p-3">
-            <button class="btn btn-danger w-100 text-center" @onclick="HandleSignOut" disabled="@isSigningOut">
-                @if (isSigningOut)
-                {
-                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                    <span>Signing out...</span>
-                }
-                else
-                {
-                    <span> Sign Out</span>
-                }
-            </button>
-        </div>
-    }
+    <div class="position-absolute bottom-0 w-100 p-3">
+        <button class="btn btn-danger w-100 text-center" @onclick="HandleSignOut" disabled="@isSigningOut">
+            @if (isSigningOut)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                <span>Signing out...</span>
+            }
+            else
+            {
+                <span> Sign Out</span>
+            }
+        </button>
+    </div>
 </div>
 
 @code {
