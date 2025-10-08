@@ -19,7 +19,7 @@ public class ConfigurationValidationService
             ["Appwrite:ProjectId"] = _configuration["Appwrite:ProjectId"],
             ["Appwrite:ApiKey"] = _configuration["Appwrite:ApiKey"],
             ["Appwrite:DatabaseId"] = _configuration["Appwrite:DatabaseId"],
-            ["Appwrite:TodosCollectionId"] = _configuration["Appwrite:TodosCollectionId"]
+            ["Appwrite:TodosTableId"] = _configuration["Appwrite:TodosTableId"]
         };
 
         var missingSettings = new List<string>();
@@ -71,7 +71,7 @@ public class ConfigurationValidationService
             "YOUR_PROJECT_ID_HERE",
             "YOUR_API_KEY_HERE", 
             "YOUR_DATABASE_ID_HERE",
-            "YOUR_COLLECTION_ID_HERE",
+            "YOUR_TABLE_ID_HERE",
             "<REGION>",
             "REPLACE_WITH_YOUR"
         };

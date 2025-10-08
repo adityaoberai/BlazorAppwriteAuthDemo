@@ -72,7 +72,7 @@ Update your `appsettings.json` with your Appwrite credentials:
     "ProjectId": "your-project-id",
     "ApiKey": "your-api-key",
     "DatabaseId": "todos-db",
-    "TodosCollectionId": "todos"
+    "TodosTableId": "todos"
   }
 }
 ```

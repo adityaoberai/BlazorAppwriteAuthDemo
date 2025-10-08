@@ -249,7 +249,7 @@ public class AppwriteService
         try
         {
             var client = CreateSessionClient();
-            var databases = new Databases(client);
+            var databases = new TablesDB(client);
             var user = await GetLoggedInUserAsync();
 
             if (user == null)
@@ -265,24 +265,24 @@ public class AppwriteService
             };
 
             var databaseId = _configuration["Appwrite:DatabaseId"];
-            var collectionId = _configuration["Appwrite:TodosCollectionId"];
+            var tableId = _configuration["Appwrite:TodosTableId"];
 
-            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(tableId))
             {
-                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
-                    databaseId ?? "NULL", collectionId ?? "NULL");
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, TableId: {TableId}",
+                    databaseId ?? "NULL", tableId ?? "NULL");
                 throw new InvalidOperationException("Database configuration is incomplete");
             }
 
-            var document = await databases.CreateDocument(
+            var row = await databases.CreateRow(
                 databaseId: databaseId,
-                collectionId: collectionId,
-                documentId: ID.Unique(),
+                tableId: tableId,
+                rowId: ID.Unique(),
                 data: data
             );
 
             _logger.LogInformation("Successfully created todo: {TodoTitle} for user: {UserId}", title, user.Id);
-            return DocumentToTodo(document);
+            return RowToTodo(row);
         }
         catch (Exception ex)
         {
@@ -299,7 +299,7 @@ public class AppwriteService
         try
         {
             var client = CreateSessionClient();
-            var databases = new Databases(client);
+            var databases = new TablesDB(client);
             var user = await GetLoggedInUserAsync();
 
             if (user == null)
@@ -314,22 +314,22 @@ public class AppwriteService
             };
 
             var databaseId = _configuration["Appwrite:DatabaseId"];
-            var collectionId = _configuration["Appwrite:TodosCollectionId"];
+            var tableId = _configuration["Appwrite:TodosTableId"];
 
-            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(tableId))
             {
-                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
-                    databaseId ?? "NULL", collectionId ?? "NULL");
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, TableId: {TableId}",
+                    databaseId ?? "NULL", tableId ?? "NULL");
                 throw new InvalidOperationException("Database configuration is incomplete");
             }
 
-            var documents = await databases.ListDocuments(
+            var rows = await databases.ListRows(
                 databaseId: databaseId,
-                collectionId: collectionId,
+                tableId: tableId,
                 queries: queries
             );
 
-            var todos = documents.Documents.Select(DocumentToTodo).ToList();
+            var todos = rows.Rows.Select(RowToTodo).ToList();
             _logger.LogDebug("Successfully retrieved {TodoCount} todos for user: {UserId}", todos.Count, user.Id);
             return todos;
         }
@@ -348,7 +348,7 @@ public class AppwriteService
         try
         {
             var client = CreateSessionClient();
-            var databases = new Databases(client);
+            var databases = new TablesDB(client);
 
             var data = new Dictionary<string, object>
             {
@@ -357,24 +357,24 @@ public class AppwriteService
             };
 
             var databaseId = _configuration["Appwrite:DatabaseId"];
-            var collectionId = _configuration["Appwrite:TodosCollectionId"];
+            var tableId = _configuration["Appwrite:TodosTableId"];
 
-            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(tableId))
             {
-                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
-                    databaseId ?? "NULL", collectionId ?? "NULL");
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, TableId: {TableId}",
+                    databaseId ?? "NULL", tableId ?? "NULL");
                 throw new InvalidOperationException("Database configuration is incomplete");
             }
 
-            var document = await databases.UpdateDocument(
+            var row = await databases.UpdateRow(
                 databaseId: databaseId,
-                collectionId: collectionId,
-                documentId: todoId,
+                tableId: tableId,
+                rowId: todoId,
                 data: data
             );
 
             _logger.LogInformation("Successfully updated todo: {TodoId}", todoId);
-            return DocumentToTodo(document);
+            return RowToTodo(row);
         }
         catch (Exception ex)
         {
@@ -391,22 +391,22 @@ public class AppwriteService
         try
         {
             var client = CreateSessionClient();
-            var databases = new Databases(client);
+            var databases = new TablesDB(client);
 
             var databaseId = _configuration["Appwrite:DatabaseId"];
-            var collectionId = _configuration["Appwrite:TodosCollectionId"];
+            var tableId = _configuration["Appwrite:TodosTableId"];
 
-            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(tableId))
             {
-                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
-                    databaseId ?? "NULL", collectionId ?? "NULL");
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, TableId: {TableId}",
+                    databaseId ?? "NULL", tableId ?? "NULL");
                 throw new InvalidOperationException("Database configuration is incomplete");
             }
 
-            await databases.DeleteDocument(
+            await databases.DeleteRow(
                 databaseId: databaseId,
-                collectionId: collectionId,
-                documentId: todoId
+                tableId: tableId,
+                rowId: todoId
             );
 
             _logger.LogInformation("Successfully deleted todo: {TodoId}", todoId);
@@ -419,25 +419,25 @@ public class AppwriteService
     }
 
     /// <summary>
-    /// Converts an Appwrite document to a TodoItem
+    /// Converts an Appwrite row to a TodoItem
     /// </summary>
-    private TodoItem DocumentToTodo(Document document)
+    private TodoItem RowToTodo(Row row)
     {
         try
         {
             return new TodoItem
             {
-                Id = document.Id,
-                Title = document.Data["title"]?.ToString() ?? "",
-                IsCompleted = document.Data["isCompleted"] is bool completed ? completed : false,
-                CreatedAt = document.Data["$createdAt"] != null 
-                    ? DateTime.Parse(document.Data["$createdAt"].ToString()!) 
+                Id = row.Id,
+                Title = row.Data["title"]?.ToString() ?? "",
+                IsCompleted = row.Data["isCompleted"] is bool completed ? completed : false,
+                CreatedAt = row.Data["$createdAt"] != null
+                    ? DateTime.Parse(row.Data["$createdAt"].ToString()!)
                     : DateTime.UtcNow
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to convert document to TodoItem: {DocumentId}", document.Id);
+            _logger.LogError(ex, "Failed to convert row to TodoItem: {RowId}", row.Id);
             throw;
         }
     }
