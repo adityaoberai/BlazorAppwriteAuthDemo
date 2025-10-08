@@ -10,12 +10,14 @@ public class AppwriteService
     private readonly IConfiguration _configuration;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AppwriteService> _logger;
+    private readonly IWebHostEnvironment _environment;
 
-    public AppwriteService(IConfiguration configuration, IHttpContextAccessor httpContextAccessor, ILogger<AppwriteService> logger)
+    public AppwriteService(IConfiguration configuration, IHttpContextAccessor httpContextAccessor, ILogger<AppwriteService> logger, IWebHostEnvironment environment)
     {
         _configuration = configuration;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
+        _environment = environment;
     }
 
     // ============================================
@@ -29,18 +31,42 @@ public class AppwriteService
     {
         var httpContext = _httpContextAccessor.HttpContext;
         if (httpContext == null)
+        {
+            _logger.LogError("HttpContext is not available when creating session client");
             throw new InvalidOperationException("HttpContext is not available");
+        }
 
         var sessionCookie = httpContext.Request.Cookies["appwrite-auth-session"];
         if (string.IsNullOrEmpty(sessionCookie))
+        {
+            _logger.LogWarning("No session cookie found when creating session client");
             throw new UnauthorizedAccessException("No session found");
+        }
 
-        var client = new Client()
-            .SetEndpoint(_configuration["Appwrite:Endpoint"] ?? throw new InvalidOperationException("Appwrite endpoint not configured"))
-            .SetProject(_configuration["Appwrite:ProjectId"] ?? throw new InvalidOperationException("Appwrite project ID not configured"))
-            .SetSession(sessionCookie);
+        var endpoint = _configuration["Appwrite:Endpoint"];
+        var projectId = _configuration["Appwrite:ProjectId"];
 
-        return client;
+        if (string.IsNullOrEmpty(endpoint) || string.IsNullOrEmpty(projectId))
+        {
+            _logger.LogError("Appwrite configuration is missing. Endpoint: {Endpoint}, ProjectId: {ProjectId}", 
+                endpoint ?? "NULL", projectId ?? "NULL");
+            throw new InvalidOperationException("Appwrite configuration is incomplete");
+        }
+
+        try
+        {
+            var client = new Client()
+                .SetEndpoint(endpoint)
+                .SetProject(projectId)
+                .SetSession(sessionCookie);
+
+            return client;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create Appwrite session client");
+            throw;
+        }
     }
 
     /// <summary>
@@ -48,12 +74,31 @@ public class AppwriteService
     /// </summary>
     public Client CreateAdminClient()
     {
-        var client = new Client()
-            .SetEndpoint(_configuration["Appwrite:Endpoint"] ?? throw new InvalidOperationException("Appwrite endpoint not configured"))
-            .SetProject(_configuration["Appwrite:ProjectId"] ?? throw new InvalidOperationException("Appwrite project ID not configured"))
-            .SetKey(_configuration["Appwrite:ApiKey"] ?? throw new InvalidOperationException("Appwrite API key not configured"));
+        var endpoint = _configuration["Appwrite:Endpoint"];
+        var projectId = _configuration["Appwrite:ProjectId"];
+        var apiKey = _configuration["Appwrite:ApiKey"];
 
-        return client;
+        if (string.IsNullOrEmpty(endpoint) || string.IsNullOrEmpty(projectId) || string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogError("Appwrite admin configuration is missing. Endpoint: {Endpoint}, ProjectId: {ProjectId}, ApiKey: {HasApiKey}", 
+                endpoint ?? "NULL", projectId ?? "NULL", !string.IsNullOrEmpty(apiKey));
+            throw new InvalidOperationException("Appwrite admin configuration is incomplete");
+        }
+
+        try
+        {
+            var client = new Client()
+                .SetEndpoint(endpoint)
+                .SetProject(projectId)
+                .SetKey(apiKey);
+
+            return client;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create Appwrite admin client");
+            throw;
+        }
     }
 
     /// <summary>
@@ -65,10 +110,18 @@ public class AppwriteService
         {
             var client = CreateSessionClient();
             var account = new Account(client);
-            return await account.Get();
+            var user = await account.Get();
+            _logger.LogDebug("Successfully retrieved user: {UserId}", user.Id);
+            return user;
         }
-        catch
+        catch (UnauthorizedAccessException)
         {
+            _logger.LogDebug("No valid session found for user");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get logged in user: {ErrorMessage}", ex.Message);
             return null;
         }
     }
@@ -78,24 +131,35 @@ public class AppwriteService
     /// </summary>
     public async Task<Session> SignUpWithEmailAsync(string email, string password, string name)
     {
-        var client = CreateAdminClient();
-        var account = new Account(client);
+        try
+        {
+            var client = CreateAdminClient();
+            var account = new Account(client);
 
-        // Create the user account
-        await account.Create(
-            userId: ID.Unique(),
-            email: email,
-            password: password,
-            name: name
-        );
+            _logger.LogInformation("Creating new user account for: {Email}", email);
 
-        // Create a session for the user
-        var session = await account.CreateEmailPasswordSession(
-            email: email,
-            password: password
-        );
+            // Create the user account
+            await account.Create(
+                userId: ID.Unique(),
+                email: email,
+                password: password,
+                name: name
+            );
 
-        return session;
+            // Create a session for the user
+            var session = await account.CreateEmailPasswordSession(
+                email: email,
+                password: password
+            );
+
+            _logger.LogInformation("Successfully created user account and session for: {Email}", email);
+            return session;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to sign up user with email: {Email}", email);
+            throw;
+        }
     }
 
     /// <summary>
@@ -103,15 +167,26 @@ public class AppwriteService
     /// </summary>
     public async Task<Session> SignInWithEmailAsync(string email, string password)
     {
-        var client = CreateAdminClient();
-        var account = new Account(client);
+        try
+        {
+            var client = CreateAdminClient();
+            var account = new Account(client);
 
-        var session = await account.CreateEmailPasswordSession(
-            email: email,
-            password: password
-        );
+            _logger.LogInformation("Attempting to sign in user: {Email}", email);
 
-        return session;
+            var session = await account.CreateEmailPasswordSession(
+                email: email,
+                password: password
+            );
+
+            _logger.LogInformation("Successfully signed in user: {Email}", email);
+            return session;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to sign in user with email: {Email}", email);
+            throw;
+        }
     }
 
     /// <summary>
@@ -142,20 +217,41 @@ public class AppwriteService
     {
         var httpContext = _httpContextAccessor.HttpContext;
         if (httpContext == null)
+        {
+            _logger.LogError("HttpContext is not available when setting session cookie");
             throw new InvalidOperationException("HttpContext is not available");
+        }
 
-        _logger.LogDebug("Setting session cookie with secret: {SessionSecretPrefix}...", sessionSecret[..Math.Min(10, sessionSecret.Length)]);
+        _logger.LogDebug("Setting session cookie with secret: {SessionSecretPrefix}...", 
+            sessionSecret[..Math.Min(10, sessionSecret.Length)]);
         
         var cookieOptions = new CookieOptions
         {
             Path = "/",
             HttpOnly = true,
             SameSite = SameSiteMode.Strict,
-            Secure = true
+            // Only use Secure in production and when HTTPS is available
+            Secure = _environment.IsProduction() && httpContext.Request.IsHttps
         };
 
         httpContext.Response.Cookies.Append("appwrite-auth-session", sessionSecret, cookieOptions);
         _logger.LogDebug("Session cookie set successfully");
+    }
+
+    /// <summary>
+    /// Clears the session cookie
+    /// </summary>
+    public void ClearSessionCookie()
+    {
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext == null)
+        {
+            _logger.LogError("HttpContext is not available when clearing session cookie");
+            return;
+        }
+
+        httpContext.Response.Cookies.Delete("appwrite-auth-session");
+        _logger.LogDebug("Session cookie cleared successfully");
     }
 
     // ============================================
@@ -167,30 +263,49 @@ public class AppwriteService
     /// </summary>
     public async Task<TodoItem> CreateTodoAsync(string title)
     {
-        var client = CreateSessionClient();
-        var databases = new Databases(client);
-        var user = await GetLoggedInUserAsync();
-
-        if (user == null)
-            throw new UnauthorizedAccessException("User not authenticated");
-
-        var data = new Dictionary<string, object>
+        try
         {
-            { "title", title },
-            { "isCompleted", false }
-        };
+            var client = CreateSessionClient();
+            var databases = new Databases(client);
+            var user = await GetLoggedInUserAsync();
 
-        var databaseId = _configuration["Appwrite:DatabaseId"] ?? throw new InvalidOperationException("Database ID not configured");
-        var collectionId = _configuration["Appwrite:TodosCollectionId"] ?? throw new InvalidOperationException("Todos collection ID not configured");
+            if (user == null)
+            {
+                _logger.LogWarning("Attempted to create todo without authenticated user");
+                throw new UnauthorizedAccessException("User not authenticated");
+            }
 
-        var document = await databases.CreateDocument(
-            databaseId: databaseId,
-            collectionId: collectionId,
-            documentId: ID.Unique(),
-            data: data
-        );
+            var data = new Dictionary<string, object>
+            {
+                { "title", title },
+                { "isCompleted", false }
+            };
 
-        return DocumentToTodo(document);
+            var databaseId = _configuration["Appwrite:DatabaseId"];
+            var collectionId = _configuration["Appwrite:TodosCollectionId"];
+
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            {
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
+                    databaseId ?? "NULL", collectionId ?? "NULL");
+                throw new InvalidOperationException("Database configuration is incomplete");
+            }
+
+            var document = await databases.CreateDocument(
+                databaseId: databaseId,
+                collectionId: collectionId,
+                documentId: ID.Unique(),
+                data: data
+            );
+
+            _logger.LogInformation("Successfully created todo: {TodoTitle} for user: {UserId}", title, user.Id);
+            return DocumentToTodo(document);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create todo: {TodoTitle}", title);
+            throw;
+        }
     }
 
     /// <summary>
@@ -198,28 +313,48 @@ public class AppwriteService
     /// </summary>
     public async Task<List<TodoItem>> GetTodosAsync()
     {
-        var client = CreateSessionClient();
-        var databases = new Databases(client);
-        var user = await GetLoggedInUserAsync();
-
-        if (user == null)
-            throw new UnauthorizedAccessException("User not authenticated");
-
-        var queries = new List<string>
+        try
         {
-            Query.OrderDesc("$createdAt")
-        };
+            var client = CreateSessionClient();
+            var databases = new Databases(client);
+            var user = await GetLoggedInUserAsync();
 
-        var databaseId = _configuration["Appwrite:DatabaseId"] ?? throw new InvalidOperationException("Database ID not configured");
-        var collectionId = _configuration["Appwrite:TodosCollectionId"] ?? throw new InvalidOperationException("Todos collection ID not configured");
+            if (user == null)
+            {
+                _logger.LogWarning("Attempted to get todos without authenticated user");
+                throw new UnauthorizedAccessException("User not authenticated");
+            }
 
-        var documents = await databases.ListDocuments(
-            databaseId: databaseId,
-            collectionId: collectionId,
-            queries: queries
-        );
+            var queries = new List<string>
+            {
+                Query.OrderDesc("$createdAt")
+            };
 
-        return documents.Documents.Select(DocumentToTodo).ToList();
+            var databaseId = _configuration["Appwrite:DatabaseId"];
+            var collectionId = _configuration["Appwrite:TodosCollectionId"];
+
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            {
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
+                    databaseId ?? "NULL", collectionId ?? "NULL");
+                throw new InvalidOperationException("Database configuration is incomplete");
+            }
+
+            var documents = await databases.ListDocuments(
+                databaseId: databaseId,
+                collectionId: collectionId,
+                queries: queries
+            );
+
+            var todos = documents.Documents.Select(DocumentToTodo).ToList();
+            _logger.LogDebug("Successfully retrieved {TodoCount} todos for user: {UserId}", todos.Count, user.Id);
+            return todos;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get todos");
+            throw;
+        }
     }
 
     /// <summary>
@@ -227,26 +362,42 @@ public class AppwriteService
     /// </summary>
     public async Task<TodoItem> UpdateTodoAsync(string todoId, string title, bool isCompleted)
     {
-        var client = CreateSessionClient();
-        var databases = new Databases(client);
-
-        var data = new Dictionary<string, object>
+        try
         {
-            { "title", title },
-            { "isCompleted", isCompleted }
-        };
+            var client = CreateSessionClient();
+            var databases = new Databases(client);
 
-        var databaseId = _configuration["Appwrite:DatabaseId"] ?? throw new InvalidOperationException("Database ID not configured");
-        var collectionId = _configuration["Appwrite:TodosCollectionId"] ?? throw new InvalidOperationException("Todos collection ID not configured");
+            var data = new Dictionary<string, object>
+            {
+                { "title", title },
+                { "isCompleted", isCompleted }
+            };
 
-        var document = await databases.UpdateDocument(
-            databaseId: databaseId,
-            collectionId: collectionId,
-            documentId: todoId,
-            data: data
-        );
+            var databaseId = _configuration["Appwrite:DatabaseId"];
+            var collectionId = _configuration["Appwrite:TodosCollectionId"];
 
-        return DocumentToTodo(document);
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            {
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
+                    databaseId ?? "NULL", collectionId ?? "NULL");
+                throw new InvalidOperationException("Database configuration is incomplete");
+            }
+
+            var document = await databases.UpdateDocument(
+                databaseId: databaseId,
+                collectionId: collectionId,
+                documentId: todoId,
+                data: data
+            );
+
+            _logger.LogInformation("Successfully updated todo: {TodoId}", todoId);
+            return DocumentToTodo(document);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update todo: {TodoId}", todoId);
+            throw;
+        }
     }
 
     /// <summary>
@@ -254,17 +405,34 @@ public class AppwriteService
     /// </summary>
     public async Task DeleteTodoAsync(string todoId)
     {
-        var client = CreateSessionClient();
-        var databases = new Databases(client);
+        try
+        {
+            var client = CreateSessionClient();
+            var databases = new Databases(client);
 
-        var databaseId = _configuration["Appwrite:DatabaseId"] ?? throw new InvalidOperationException("Database ID not configured");
-        var collectionId = _configuration["Appwrite:TodosCollectionId"] ?? throw new InvalidOperationException("Todos collection ID not configured");
+            var databaseId = _configuration["Appwrite:DatabaseId"];
+            var collectionId = _configuration["Appwrite:TodosCollectionId"];
 
-        await databases.DeleteDocument(
-            databaseId: databaseId,
-            collectionId: collectionId,
-            documentId: todoId
-        );
+            if (string.IsNullOrEmpty(databaseId) || string.IsNullOrEmpty(collectionId))
+            {
+                _logger.LogError("Database configuration is missing. DatabaseId: {DatabaseId}, CollectionId: {CollectionId}",
+                    databaseId ?? "NULL", collectionId ?? "NULL");
+                throw new InvalidOperationException("Database configuration is incomplete");
+            }
+
+            await databases.DeleteDocument(
+                databaseId: databaseId,
+                collectionId: collectionId,
+                documentId: todoId
+            );
+
+            _logger.LogInformation("Successfully deleted todo: {TodoId}", todoId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete todo: {TodoId}", todoId);
+            throw;
+        }
     }
 
     /// <summary>
@@ -272,14 +440,22 @@ public class AppwriteService
     /// </summary>
     private TodoItem DocumentToTodo(Document document)
     {
-        return new TodoItem
+        try
         {
-            Id = document.Id,
-            Title = document.Data["title"]?.ToString() ?? "",
-            IsCompleted = document.Data["isCompleted"] is bool completed ? completed : false,
-            CreatedAt = document.Data["$createdAt"] != null 
-                ? DateTime.Parse(document.Data["$createdAt"].ToString()!) 
-                : DateTime.UtcNow
-        };
+            return new TodoItem
+            {
+                Id = document.Id,
+                Title = document.Data["title"]?.ToString() ?? "",
+                IsCompleted = document.Data["isCompleted"] is bool completed ? completed : false,
+                CreatedAt = document.Data["$createdAt"] != null 
+                    ? DateTime.Parse(document.Data["$createdAt"].ToString()!) 
+                    : DateTime.UtcNow
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to convert document to TodoItem: {DocumentId}", document.Id);
+            throw;
+        }
     }
 }

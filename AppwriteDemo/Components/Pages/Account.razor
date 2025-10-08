@@ -16,6 +16,14 @@
                     <h3 class="text-center">Account Information</h3>
                 </div>
                 <div class="card-body">
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <strong>Error:</strong> @errorMessage
+                            <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
+                        </div>
+                    }
+
                     @if (user != null)
                     {
                         <div class="row">
@@ -80,6 +88,7 @@
     private User? user;
     private bool isLoading = true;
     private bool isSigningOut = false;
+    private string errorMessage = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -90,7 +99,7 @@
             
             if (user == null)
             {
-                Logger.LogInformation("Account page: No authenticated user found, redirecting to signup");
+                Logger.LogInformation("Account page: No authenticated user found, redirecting to signin");
                 Navigation.NavigateTo("/signin");
             }
             else
@@ -98,10 +107,20 @@
                 Logger.LogDebug("Account page: Successfully loaded user {UserEmail}", user.Email);
             }
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configuration"))
+        {
+            Logger.LogError(ex, "Account page: Configuration error");
+            errorMessage = "Application configuration error. Please contact support.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.LogInformation("Account page: Unauthorized access, redirecting to signin");
+            Navigation.NavigateTo("/signin");
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Account page: Error loading user information");
-            Navigation.NavigateTo("/signin");
+            errorMessage = "Unable to load account information. Please try refreshing the page.";
         }
         finally
         {
@@ -114,9 +133,11 @@
         try
         {
             isSigningOut = true;
+            errorMessage = string.Empty;
             Logger.LogInformation("Account page: User {UserEmail} is signing out", user?.Email);
             
             await AppwriteService.SignOutAsync();
+            AppwriteService.ClearSessionCookie();
             
             Logger.LogInformation("Account page: Sign out successful, redirecting to signin");
             Navigation.NavigateTo("/signin", forceLoad: true);
@@ -124,6 +145,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Account page: Error during sign out");
+            errorMessage = "Error signing out. Please try again.";
             isSigningOut = false;
         }
     }

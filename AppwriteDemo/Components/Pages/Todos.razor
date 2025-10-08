@@ -21,6 +21,15 @@
                     }
                 </div>
                 <div class="card-body">
+                    @if (hasConfigurationError)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <h4 class="alert-heading">Configuration Error</h4>
+                            <p>The application is not properly configured. Please contact support.</p>
+                        </div>
+                        return;
+                    }
+
                     @if (isLoading)
                     {
                         <div class="text-center py-5">
@@ -64,7 +73,7 @@
                         @if (!string.IsNullOrEmpty(errorMessage))
                         {
                             <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                @errorMessage
+                                <strong>Error:</strong> @errorMessage
                                 <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
                             </div>
                         }
@@ -147,6 +156,7 @@
     private string newTodoTitle = string.Empty;
     private bool isLoading = true;
     private bool isAddingTodo = false;
+    private bool hasConfigurationError = false;
     private HashSet<string> updatingTodoIds = new();
     private HashSet<string> deletingTodoIds = new();
     private string errorMessage = string.Empty;
@@ -168,10 +178,20 @@
 
             await LoadTodos();
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configuration"))
+        {
+            Logger.LogError(ex, "Todos page: Configuration error");
+            hasConfigurationError = true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.LogWarning("Todos page: Unauthorized access, redirecting to signin");
+            Navigation.NavigateTo("/signin");
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Todos page: Error during initialization");
-            errorMessage = "Failed to load todos. Please try again.";
+            errorMessage = "Failed to load todos. Please try refreshing the page.";
         }
         finally
         {
@@ -185,6 +205,16 @@
         {
             todos = await AppwriteService.GetTodosAsync();
             Logger.LogInformation("Todos page: Loaded {TodoCount} todos", todos.Count);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configuration"))
+        {
+            Logger.LogError(ex, "Todos page: Configuration error while loading todos");
+            hasConfigurationError = true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.LogWarning("Todos page: Unauthorized while loading todos, redirecting to signin");
+            Navigation.NavigateTo("/signin");
         }
         catch (Exception ex)
         {
@@ -211,8 +241,25 @@
             successMessage = "Todo added successfully!";
             
             // Clear success message after 3 seconds
-            await Task.Delay(3000);
-            successMessage = string.Empty;
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(3000);
+                await InvokeAsync(() =>
+                {
+                    successMessage = string.Empty;
+                    StateHasChanged();
+                });
+            });
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configuration"))
+        {
+            Logger.LogError(ex, "Todos page: Configuration error while creating todo");
+            errorMessage = "Application configuration error. Please contact support.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.LogWarning("Todos page: Unauthorized while creating todo, redirecting to signin");
+            Navigation.NavigateTo("/signin");
         }
         catch (Exception ex)
         {
@@ -242,6 +289,16 @@
 
             Logger.LogInformation("Todos page: Toggled todo {TodoId} to {IsCompleted}", todo.Id, updatedTodo.IsCompleted);
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configuration"))
+        {
+            Logger.LogError(ex, "Todos page: Configuration error while updating todo");
+            errorMessage = "Application configuration error. Please contact support.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.LogWarning("Todos page: Unauthorized while updating todo, redirecting to signin");
+            Navigation.NavigateTo("/signin");
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Todos page: Error updating todo");
@@ -264,6 +321,16 @@
             todos.RemoveAll(t => t.Id == todoId);
 
             Logger.LogInformation("Todos page: Deleted todo {TodoId}", todoId);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("configuration"))
+        {
+            Logger.LogError(ex, "Todos page: Configuration error while deleting todo");
+            errorMessage = "Application configuration error. Please contact support.";
+        }
+        catch (UnauthorizedAccessException)
+        {
+            Logger.LogWarning("Todos page: Unauthorized while deleting todo, redirecting to signin");
+            Navigation.NavigateTo("/signin");
         }
         catch (Exception ex)
         {

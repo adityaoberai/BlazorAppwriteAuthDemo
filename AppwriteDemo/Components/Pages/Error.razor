@@ -3,26 +3,59 @@
 
 <PageTitle>Error</PageTitle>
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card border-danger">
+                <div class="card-header bg-danger text-white">
+                    <h3 class="mb-0">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Something went wrong
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger" role="alert">
+                        <h4 class="alert-heading">Oops! An error occurred</h4>
+                        <p>We're sorry, but something went wrong while processing your request.</p>
+                        <hr>
+                        <p class="mb-0">
+                            This issue has been logged and our team has been notified. 
+                            Please try refreshing the page or going back to the previous page.
+                        </p>
+                    </div>
 
-@if (ShowRequestId)
-{
-    <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
-    </p>
-}
+                    <div class="d-flex gap-2 mt-4">
+                        <a href="/" class="btn btn-primary">
+                            <i class="bi bi-house me-1"></i>
+                            Go Home
+                        </a>
+                        <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
+                            <i class="bi bi-arrow-left me-1"></i>
+                            Go Back
+                        </button>
+                        <button type="button" class="btn btn-outline-info" onclick="location.reload()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>
+                            Refresh Page
+                        </button>
+                    </div>
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+                    @if (ShowRequestId)
+                    {
+                        <div class="mt-4">
+                            <details class="border rounded p-3">
+                                <summary class="fw-bold text-muted">Technical Details</summary>
+                                <div class="mt-3">
+                                    <p><strong>Request ID:</strong> <code>@RequestId</code></p>
+                                    <p><strong>Time:</strong> @DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
+                                </div>
+                            </details>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 @code{
     [CascadingParameter]
